@@ -3,11 +3,13 @@ package new
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
 
 	"github.com/AlecAivazis/survey/v2"
+
 	"github.com/spf13/cobra"
 	"github.com/witthawin0/scapr/config"
 	"github.com/witthawin0/scapr/internal/pkg/helper"
@@ -15,115 +17,132 @@ import (
 
 type Project struct {
 	ProjectName string `survey:"name"`
-	Framework   string
-	Database    string
-	ORM         string
 }
 
 var CmdNew = &cobra.Command{
 	Use:     "new",
 	Example: "scapr new demo-api",
-	Short:   "Create a new project with scapr template.",
-	Long:    "Create a new project with a customizable scapr template.",
+	Short:   "create a new project.",
+	Long:    `create a new project with scapr layout.`,
 	Run:     run,
 }
-
 var (
 	repoURL string
 )
 
 func init() {
-	CmdNew.Flags().StringVarP(&repoURL, "repo-url", "r", repoURL, "layout repository URL")
-}
+	CmdNew.Flags().StringVarP(&repoURL, "repo-url", "r", repoURL, "layout repo")
 
+}
 func NewProject() *Project {
 	return &Project{}
 }
 
 func run(cmd *cobra.Command, args []string) {
 	p := NewProject()
-
-	// Check if a project name is provided as an argument
 	if len(args) == 0 {
-		// Prompt for the project name if not provided
 		err := survey.AskOne(&survey.Input{
 			Message: "What is your project name?",
-			Help:    "Enter the name of your project.",
+			Help:    "project name.",
+			Suggest: nil,
 		}, &p.ProjectName, survey.WithValidator(survey.Required))
 		if err != nil {
-			fmt.Println("Error:", err)
 			return
 		}
 	} else {
-		// Use the first argument as the project name
 		p.ProjectName = args[0]
 	}
 
-	// Gather user preferences
-	frameworkPrompt := &survey.Select{
-		Message: "Select your HTTP framework:",
-		Options: []string{"Gin", "Fiber", "Echo"},
-	}
-	_ = survey.AskOne(frameworkPrompt, &p.Framework)
-
-	databasePrompt := &survey.Select{
-		Message: "Select your database:",
-		Options: []string{"PostgreSQL", "MySQL", "MongoDB"},
-	}
-	_ = survey.AskOne(databasePrompt, &p.Database)
-
-	ormPrompt := &survey.Select{
-		Message: "Select your ORM/SQL mapper:",
-		Options: []string{"GORM", "SQLC", "None"},
-	}
-	_ = survey.AskOne(ormPrompt, &p.ORM)
-
-	// Clone template
+	// clone repo
 	yes, err := p.cloneTemplate()
 	if err != nil || !yes {
 		return
 	}
 
-	// Replace package name and perform initial setup
-	if err := p.replacePackageName(); err != nil {
-		return
-	}
-	if err := p.configureProject(); err != nil {
-		return
-	}
-	if err := p.modTidy(); err != nil {
+	err = p.replacePackageName()
+	if err != nil || !yes {
 		return
 	}
 
+	err = p.replacePackageName()
+	if err != nil || !yes {
+		return
+	}
+	err = p.modTidy()
+	if err != nil || !yes {
+		return
+	}
 	p.rmGit()
-	fmt.Printf("\n🎉 Project \u001B[36m%s\u001B[0m created successfully!\n", p.ProjectName)
-	fmt.Printf("\nDone. Now run:\n\n")
+	p.installWire()
+	fmt.Printf("\n _   _                   \n| \\ | |_   _ _ __  _   _ \n|  \\| | | | | '_ \\| | | |\n| |\\  | |_| | | | | |_| |\n|_| \\_|\\__,_|_| |_|\\__,_| \n \n" + "\x1B[38;2;66;211;146mA\x1B[39m \x1B[38;2;67;209;149mC\x1B[39m\x1B[38;2;68;206;152mL\x1B[39m\x1B[38;2;69;204;155mI\x1B[39m \x1B[38;2;70;201;158mt\x1B[39m\x1B[38;2;71;199;162mo\x1B[39m\x1B[38;2;72;196;165mo\x1B[39m\x1B[38;2;73;194;168ml\x1B[39m \x1B[38;2;74;192;171mf\x1B[39m\x1B[38;2;75;189;174mo\x1B[39m\x1B[38;2;76;187;177mr\x1B[39m \x1B[38;2;77;184;180mb\x1B[39m\x1B[38;2;78;182;183mu\x1B[39m\x1B[38;2;79;179;186mi\x1B[39m\x1B[38;2;80;177;190ml\x1B[39m\x1B[38;2;81;175;193md\x1B[39m\x1B[38;2;82;172;196mi\x1B[39m\x1B[38;2;83;170;199mn\x1B[39m\x1B[38;2;83;167;202mg\x1B[39m \x1B[38;2;84;165;205mg\x1B[39m\x1B[38;2;85;162;208mo\x1B[39m \x1B[38;2;86;160;211ma\x1B[39m\x1B[38;2;87;158;215mp\x1B[39m\x1B[38;2;88;155;218ml\x1B[39m\x1B[38;2;89;153;221mi\x1B[39m\x1B[38;2;90;150;224mc\x1B[39m\x1B[38;2;91;148;227ma\x1B[39m\x1B[38;2;92;145;230mt\x1B[39m\x1B[38;2;93;143;233mi\x1B[39m\x1B[38;2;94;141;236mo\x1B[39m\x1B[38;2;95;138;239mn\x1B[39m\x1B[38;2;96;136;243m.\x1B[39m\n\n")
+	fmt.Printf("🎉 Project \u001B[36m%s\u001B[0m created successfully!\n\n", p.ProjectName)
+	fmt.Printf("Done. Now run:\n\n")
 	fmt.Printf("› \033[36mcd %s \033[0m\n", p.ProjectName)
-	fmt.Printf("› \033[36mnunu run \033[0m\n\n")
+	fmt.Printf("› \033[36mscapr run \033[0m\n\n")
 }
 
 func (p *Project) cloneTemplate() (bool, error) {
-	if _, err := os.Stat(p.ProjectName); err == nil {
-		var overwrite bool
+	stat, _ := os.Stat(p.ProjectName)
+	if stat != nil {
+		var overwrite = false
+
 		prompt := &survey.Confirm{
-			Message: fmt.Sprintf("Folder %s already exists. Overwrite?", p.ProjectName),
-			Help:    "This will remove the existing folder and create a new project.",
+			Message: fmt.Sprintf("Folder %s already exists, do you want to overwrite it?", p.ProjectName),
+			Help:    "Remove old project and create new project.",
 		}
-		if err := survey.AskOne(prompt, &overwrite); err != nil || !overwrite {
+		err := survey.AskOne(prompt, &overwrite)
+		if err != nil {
 			return false, err
 		}
-		os.RemoveAll(p.ProjectName)
+		if !overwrite {
+			return false, nil
+		}
+		err = os.RemoveAll(p.ProjectName)
+		if err != nil {
+			fmt.Println("remove old project error: ", err)
+			return false, err
+		}
 	}
-
 	repo := config.RepoBase
-	if repoURL != "" {
+
+	if repoURL == "" {
+		layout := ""
+		prompt := &survey.Select{
+			Message: "Please select a layout:",
+			Options: []string{
+				"Advanced",
+				"Basic"},
+			Description: func(value string, index int) string {
+				if index == 1 {
+					return "A basic project structure"
+				}
+				if index == 2 {
+					return "A simple chat room containing websocket/tcp"
+				}
+				return "It has rich functions such as db, jwt, cron, migration, test, etc"
+			},
+		}
+		err := survey.AskOne(prompt, &layout)
+		if err != nil {
+			return false, err
+		}
+		if layout == "Advanced" {
+			repo = config.RepoAdvanced
+		}
+		err = os.RemoveAll(p.ProjectName)
+		if err != nil {
+			fmt.Println("remove old project error: ", err)
+			return false, err
+		}
+	} else {
 		repo = repoURL
 	}
 
-	fmt.Printf("Cloning repository: %s\n", repo)
+	fmt.Printf("git clone %s\n", repo)
 	cmd := exec.Command("git", "clone", repo, p.ProjectName)
-	if _, err := cmd.CombinedOutput(); err != nil {
-		fmt.Printf("Error cloning repository: %v\n", err)
+	_, err := cmd.CombinedOutput()
+	if err != nil {
+		fmt.Printf("git clone %s error: %s\n", repo, err)
 		return false, err
 	}
 	return true, nil
@@ -131,58 +150,68 @@ func (p *Project) cloneTemplate() (bool, error) {
 
 func (p *Project) replacePackageName() error {
 	packageName := helper.GetProjectName(p.ProjectName)
-	return p.replaceFiles(packageName)
-}
 
-func (p *Project) configureProject() error {
-	configurations := map[string]string{
-		"{{FRAMEWORK}}": p.Framework,
-		"{{DATABASE}}":  p.Database,
-		"{{ORM}}":       p.ORM,
+	err := p.replaceFiles(packageName)
+	if err != nil {
+		return err
 	}
-	for placeholder, value := range configurations {
-		if err := p.replaceFilesWithPlaceholder(placeholder, value); err != nil {
-			return err
-		}
+
+	cmd := exec.Command("go", "mod", "edit", "-module", p.ProjectName)
+	cmd.Dir = p.ProjectName
+	_, err = cmd.CombinedOutput()
+	if err != nil {
+		fmt.Println("go mod edit error: ", err)
+		return err
 	}
 	return nil
 }
-
-func (p *Project) replaceFiles(placeholder string) error {
-	return filepath.Walk(p.ProjectName, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() || filepath.Ext(path) != ".go" {
-			return err
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		newData := bytes.ReplaceAll(data, []byte(placeholder), []byte(p.ProjectName))
-		return os.WriteFile(path, newData, 0644)
-	})
-}
-
-func (p *Project) replaceFilesWithPlaceholder(placeholder, value string) error {
-	return filepath.Walk(p.ProjectName, func(path string, info os.FileInfo, err error) error {
-		if err != nil || info.IsDir() {
-			return err
-		}
-		data, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		newData := bytes.ReplaceAll(data, []byte(placeholder), []byte(value))
-		return os.WriteFile(path, newData, 0644)
-	})
-}
-
 func (p *Project) modTidy() error {
-	fmt.Println("Running go mod tidy")
+	fmt.Println("go mod tidy")
 	cmd := exec.Command("go", "mod", "tidy")
 	cmd.Dir = p.ProjectName
-	return cmd.Run()
+	if err := cmd.Run(); err != nil {
+		fmt.Println("go mod tidy error: ", err)
+		return err
+	}
+	return nil
+}
+func (p *Project) rmGit() {
+	os.RemoveAll(p.ProjectName + "/.git")
+}
+func (p *Project) installWire() {
+	fmt.Printf("go install %s\n", config.WireCmd)
+	cmd := exec.Command("go", "install", config.WireCmd)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		log.Fatalf("go install %s error\n", err)
+	}
 }
 
-func (p *Project) rmGit() {
-	os.RemoveAll(filepath.Join(p.ProjectName, ".git"))
+func (p *Project) replaceFiles(packageName string) error {
+	err := filepath.Walk(p.ProjectName, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+		if filepath.Ext(path) != ".go" {
+			return nil
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		newData := bytes.ReplaceAll(data, []byte(packageName), []byte(p.ProjectName))
+		if err := os.WriteFile(path, newData, 0644); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		fmt.Println("walk file error: ", err)
+		return err
+	}
+	return nil
 }

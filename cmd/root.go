@@ -9,7 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/witthawin0/scapr/config"
+	"github.com/witthawin0/scapr/internal/command/create"
 	"github.com/witthawin0/scapr/internal/command/new"
+	"github.com/witthawin0/scapr/internal/command/run"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -22,6 +24,15 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.AddCommand(new.CmdNew)
+	rootCmd.AddCommand(run.CmdRun)
+
+	rootCmd.AddCommand(create.CmdCreate)
+	create.CmdCreate.AddCommand(create.CmdCreateHandler)
+	create.CmdCreate.AddCommand(create.CmdCreateService)
+	create.CmdCreate.AddCommand(create.CmdCreateRepository)
+	create.CmdCreate.AddCommand(create.CmdCreateModel)
+	create.CmdCreate.AddCommand(create.CmdCreateAll)
+
 }
 
 // This is called by main.main(). It only needs to happen once to the rootCmd.
